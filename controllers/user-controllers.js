@@ -154,6 +154,18 @@ const getUserById = async (req, res, next) => {
 	res.json(user)
 }
 
+const getAllUSer = async (req, res, next) => {
+	let users
+	try {
+		users = await UserAuth.find()
+	} catch (error) {
+		return next(new HttpError("Something went wrong"))
+	}
+
+	res.json(users)
+}
+
 exports.signUp = signUp
 exports.login = login
 exports.getUserById = getUserById
+exports.getAllUSer = getAllUSer
