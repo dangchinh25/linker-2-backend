@@ -77,6 +77,39 @@ const createPost = async (req, res, next) => {
 	res.status(201).json({ post: newPost })
 }
 
+const votePost = async (req, res, next) => {
+	const postId = req.params.pid
+	const { voteType } = req.body
+
+	let post
+	try {
+		post = await Post.findById(postId)
+	} catch (error) {
+		return next(
+			new HttpError("Could not find post for the provided Id", 500)
+		)
+	}
+
+	if (!post) {
+		return next(
+			new HttpError("Could not find post for the provided Id", 500)
+		)
+	}
+	if (voteType === "upvote") {
+		post.votes.upvote += 1
+	} else {
+		post.votes.downvote += 1
+	}
+
+	try {
+		await post.save()
+	} catch (error) {
+		return next(new HttpError("Something went wrong", 500))
+	}
+
+	res.json(post)
+}
+
 const deletePostById = async (req, res, next) => {
 	const postId = req.params.pid
 
@@ -153,3 +186,4 @@ exports.getAllPost = getAllPost
 exports.deletePostById = deletePostById
 exports.getPostByTag = getPostByTag
 exports.editPostById = editPostById
+exports.votePost = votePost
