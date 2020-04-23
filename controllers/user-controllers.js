@@ -43,9 +43,11 @@ const signUp = async (req, res, next) => {
 		password: hashedPassword,
 		age: 18,
 		gender: "Male",
-		images: [],
+		images: "",
 		posts: [],
 		peopleConnected: [],
+		pendingRequest: [],
+		incomingRequest: [],
 	})
 
 	try {
@@ -133,6 +135,136 @@ const login = async (req, res, next) => {
 	})
 }
 
+const requestConnect = async (req, res, next) => {
+	const userId = req.params.uid
+
+	let thisUser
+	try {
+		thisUser = await UserAuth.findById(req.user.userId)
+	} catch (error) {
+		return next(
+			new HttpError("Could not find the user for the provided id", 500)
+		)
+	}
+
+	if (!thisUser)
+		return next(
+			new HttpError("Could not find the user for the provided id", 404)
+		)
+
+	let userConnect
+	try {
+		userConnect = await UserAuth.findById(userId)
+	} catch (error) {
+		return next(
+			new HttpError("Could not find the user for the provided id", 500)
+		)
+	}
+
+	if (!userConnect)
+		return next(
+			new HttpError("Could not find the user for the provided id", 404)
+		)
+
+	//user cant send request to people they already connected
+	const previousConnected = thisUser.peopleConnected
+	const existedConnect = previousConnected.find(
+		(connectionId) =>
+			connectionId.toString() === userConnect._id.toString()
+	)
+	if (existedConnect) {
+		return next(new HttpError("Already connected", 500))
+	}
+
+	//user cant send request to people they already sent request
+	const existedPending = thisUser.pendingRequest.find(
+		(connectionId) =>
+			connectionId.toString() === userConnect._id.toString()
+	)
+	if (existedPending) {
+		return next(new HttpError("Already requested", 500))
+	}
+
+	try {
+		const sess = await mongoose.startSession()
+		sess.startTransaction()
+		userConnect.incomingRequest.push(req.user.userId)
+		thisUser.pendingRequest.push(userConnect._id)
+		await userConnect.save({ session: sess })
+		await thisUser.save({ session: sess })
+		await sess.commitTransaction()
+	} catch (error) {
+		console.log(err)
+		return next(new HttpError("Something went wrong", 500))
+	}
+
+	res.json({ thisUser, userConnect })
+}
+
+const acceptConnect = async (req, res, next) => {
+	const userId = req.params.uid
+
+	//this user are trying to accept an invitation
+	let thisUser
+	try {
+		thisUser = await (await UserAuth.findById(req.user.userId)).populate(
+			"incomingRequest"
+		)
+	} catch (error) {
+		return next(
+			new HttpError("Could not find the user for the provided id", 500)
+		)
+	}
+
+	if (!thisUser)
+		return next(
+			new HttpError("Could not find the user for the provided id", 404)
+		)
+
+	//this user will be accepted
+	let acceptedUser
+	try {
+		acceptedUser = await UserAuth.findById(userId).populate(
+			"pendingRequest"
+		)
+	} catch (error) {
+		return next(
+			new HttpError("Could not find the user for the provided id", 500)
+		)
+	}
+
+	if (!acceptedUser)
+		return next(
+			new HttpError("Could not find the user for the provided id", 404)
+		)
+
+	const previousConnected = thisUser.peopleConnected
+	const existedConnect = previousConnected.find(
+		(connectionId) =>
+			connectionId.toString() === acceptedUser._id.toString()
+	)
+	if (existedConnect) {
+		return next(new HttpError("Already connected", 500))
+	}
+
+	try {
+		const sess = await mongoose.startSession()
+		sess.startTransaction()
+		acceptedUser.pendingRequest.pull(thisUser._id)
+		thisUser.incomingRequest.pull(acceptedUser._id)
+		acceptedUser.peopleConnected.push(req.user.userId)
+		thisUser.peopleConnected.push(acceptedUser._id)
+		await acceptedUser.save({ session: sess })
+		await thisUser.save({ session: sess })
+		await sess.commitTransaction()
+	} catch (error) {
+		console.log(err)
+		return next(new HttpError("Something went wrong", 500))
+	}
+
+	res.json({ thisUser, acceptedUser })
+}
+
 const getUserById = async (req, res, next) => {
 	const userId = req.params.uid
 
@@ -169,3 +301,5 @@ exports.signUp = signUp
 exports.login = login
 exports.getUserById = getUserById
 exports.getAllUSer = getAllUSer
+exports.requestConnect = requestConnect
+exports.acceptConnect = acceptConnect
